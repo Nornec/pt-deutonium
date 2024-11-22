@@ -11,9 +11,21 @@ local subcritical_pressure = 5
 local subcritical_temp = 100 + kelvin_conversion
 local fissile_bounds = 500000
 local fissile_strength = 499990
+local fissile_velocity_factor = 0.5
 local heat_xfer_amt = 80
 local adjacent_heat_xfer_amt = 0.008
-local dutm_life = 150
+local dutm_life = 250
+
+local quadrants = 
+{
+  [1] = {1,1}, 
+  [2] = {-1,1}, 
+  [3] = {-1,-1}, 
+  [4] = {1,-1}
+}
+
+local x_sign = 1
+local y_sign = 2
 
 local function get_table_length(t)
   local count = 0
@@ -25,6 +37,16 @@ end
 
 local function part_set_temp(part, temp)
   sim.partProperty(part, "temp", temp)
+end
+
+local function part_scale_vel(part)
+  if sim.partProperty(part, "vx") ~= nil then
+    sim.partProperty(part, "vx", sim.partProperty(part, "vx")/fissile_velocity_factor)
+  end
+
+  if sim.partProperty(part, "vy") ~= nil then
+    sim.partProperty(part, "vy", sim.partProperty(part, "vy")/fissile_velocity_factor)
+  end
 end
 
 local function part_heat_up(part, amount)
@@ -44,11 +66,13 @@ local function radio_activate(source, part, energy)
   end
 
   if sim.partProperty(source, "temp") > critical_temp then  
-		part_x, part_y = sim.partPosition(part)
-		new_part = sim.partCreate(-3, part_x, part_y, energy)
-		part_set_temp(new_part, sim.partProperty(source, "temp"))
+    part_x, part_y = sim.partPosition(part)
+    new_part = sim.partCreate(-3, part_x, part_y, energy)
+    part_set_temp(new_part, sim.partProperty(source, "temp"))
+    part_scale_vel(new_part)
+    
     part_heat_up(source, 80)
-		part_hurt(source)
+    part_hurt(source)
   end
 
 end
@@ -61,15 +85,15 @@ local function check_neighbors(source, x, y, n_type)
         part_heat_up(part, adjacent_heat_xfer_amt)
       end
     else
-			rand = math.random(0, fissile_bounds)
-			if rand > fissile_strength then
-				part_x, part_y = sim.partPosition(source)
-				sim.partCreate(-3, part_x, part_y, n_type)
-			end
+      rand = math.random(0, fissile_bounds)
+      if rand > fissile_strength then
+        part_x, part_y = sim.partPosition(source)
+        sim.partCreate(-3, part_x, part_y, n_type)
+      end
 
-			for idx, part in pairs(neighbors) do
-				radio_activate(source, part, n_type)
-			end
+      for idx, part in pairs(neighbors) do
+        radio_activate(source, part, n_type)
+      end
     end
   end
 end
@@ -82,7 +106,8 @@ local function dutm_update(i, x, y, s, nt)
   if sim.pressure(x/4,y/4) > subcritical_pressure or sim.partProperty(i, "temp") > subcritical_temp then
     rand = math.random(0,fissile_bounds)
     if rand > fissile_strength - (sim.partProperty(i, "temp") * 3) then
-      sim.partCreate(-3, x, y, elem.DEFAULT_PT_NEUT)
+      new_part = sim.partCreate(-3, x, y, elem.DEFAULT_PT_NEUT)
+      part_scale_vel(new_part)
       part_hurt(i)
     end
   end
